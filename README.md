@@ -7,15 +7,6 @@ ThreeJS Hilbert Geometry
 
 A Three.js geometry for constructing a square-tube Hilbert curve with a recursive 3D path.
 
-<p align="center">
-  <b>Generate a compact, self-similar 3D path</b><br>
-  <i>Ideal for scientific visualizations, flow maps, space-filling curves, and procedural geometry.</i>
-</p>
-
-## Examples
-
-* [Basic Hilbert curve](./example/basic/index.html)
-
 ## Quick start
 
 ```js
