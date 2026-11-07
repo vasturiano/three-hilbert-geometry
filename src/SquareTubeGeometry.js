@@ -122,11 +122,34 @@ export default class SquareTubeGeometry extends BufferGeometry {
       return;
     }
 
+    if (path.length === 1) {
+      const [x, y, z] = path[0].toArray();
+      const halfWidth = width / 2;
+      const positions = new Float32Array(24 * 3);
+      let positionOffset = 0;
+      for (const face of SINGLE_CUBE_FACES) {
+        for (const corner of face) {
+          const signs = SINGLE_CUBE_CORNERS[corner];
+          positions[positionOffset++] = x + signs[0] * halfWidth;
+          positions[positionOffset++] = y + signs[1] * halfWidth;
+          positions[positionOffset++] = z + signs[2] * halfWidth;
+        }
+      }
+
+      this.setIndex(new Uint16BufferAttribute(SINGLE_CUBE_INDICES.slice(), 1));
+      this.setAttribute('position', new Float32BufferAttribute(positions, 3));
+      this.setAttribute('uv', new Float32BufferAttribute(SINGLE_CUBE_UVS.slice(), 2));
+      this.setAttribute('normal', new Float32BufferAttribute(SINGLE_CUBE_NORMALS.slice(), 3));
+      this.computeBoundingBox();
+      this.computeBoundingSphere();
+      return;
+    }
+
     const directions = path.slice(1).map((point, index) =>
       point.clone().sub(path[index]).normalize()
     );
     const turnTolerance = 1e-6;
-    let turnCount = 0;
+    const isClosed = path.length > 2 && path[0].distanceToSquared(path[path.length - 1]) === 0;
     for (let i = 1; i < directions.length; i++) {
       const dot = directions[i - 1].dot(directions[i]);
       const isRightAngle = Math.abs(dot) <= turnTolerance;
@@ -134,7 +157,12 @@ export default class SquareTubeGeometry extends BufferGeometry {
       if (!isRightAngle && !continuesStraight) {
         throw new RangeError('path turns must be 90 degrees; straight segments are also allowed');
       }
-      if (isRightAngle) turnCount++;
+    }
+    if (isClosed) {
+      const dot = directions[directions.length - 1].dot(directions[0]);
+      if (Math.abs(dot) > turnTolerance && dot < 1 - turnTolerance) {
+        throw new RangeError('path turns must be 90 degrees; straight segments are also allowed');
+      }
     }
 
     const halfWidth = width / 2;
@@ -164,99 +192,102 @@ export default class SquareTubeGeometry extends BufferGeometry {
       frames.push({ normal: normal.clone(), binormal: binormal.clone() });
     }
 
-    const faces = [
-      [0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7],
-      [0, 3, 2, 1], [4, 5, 6, 7]
-    ];
-    const solidCount = path.length === 1 ? 1 : directions.length + turnCount;
-    const positions = new Float32Array(solidCount * 24 * 3);
-    const uvs = new Float32Array(solidCount * 24 * 2);
-    const use32BitIndices = solidCount * 24 > 65535;
-    const IndexAttribute = use32BitIndices ? Uint32BufferAttribute : Uint16BufferAttribute;
-    const indices = use32BitIndices ? new Uint32Array(solidCount * 36) : new Uint16Array(solidCount * 36);
-    let positionOffset = 0;
-    let uvOffset = 0;
-    let vertexOffset = 0;
-    let indexOffset = 0;
+    const positions = [];
+    const uvs = [];
+    const indices = [];
+    const faceCorners = [[0, 1], [1, 2], [2, 3], [3, 0]];
 
-    function addSolid(corners) {
-      for (const face of faces) {
-        for (const cornerIndex of face) {
-          const point = corners[cornerIndex];
-          positions[positionOffset++] = point.x;
-          positions[positionOffset++] = point.y;
-          positions[positionOffset++] = point.z;
-          uvs[uvOffset++] = cornerIndex % 2;
-          uvs[uvOffset++] = Math.floor(cornerIndex / 2) % 2;
-        }
-        indices[indexOffset++] = vertexOffset;
-        indices[indexOffset++] = vertexOffset + 1;
-        indices[indexOffset++] = vertexOffset + 2;
-        indices[indexOffset++] = vertexOffset;
-        indices[indexOffset++] = vertexOffset + 2;
-        indices[indexOffset++] = vertexOffset + 3;
-        vertexOffset += 4;
-      }
-    }
-
-    if (path.length === 1) {
-      const [x, y, z] = path[0].toArray();
-      addSolid([
-        new Vector3(x - halfWidth, y - halfWidth, z - halfWidth),
-        new Vector3(x + halfWidth, y - halfWidth, z - halfWidth),
-        new Vector3(x + halfWidth, y + halfWidth, z - halfWidth),
-        new Vector3(x - halfWidth, y + halfWidth, z - halfWidth),
-        new Vector3(x - halfWidth, y - halfWidth, z + halfWidth),
-        new Vector3(x + halfWidth, y - halfWidth, z + halfWidth),
-        new Vector3(x + halfWidth, y + halfWidth, z + halfWidth),
-        new Vector3(x - halfWidth, y + halfWidth, z + halfWidth)
-      ]);
-
-      this.setIndex(new IndexAttribute(indices, 1));
-      this.setAttribute('position', new Float32BufferAttribute(positions, 3));
-      this.setAttribute('uv', new Float32BufferAttribute(uvs, 2));
-      this.computeVertexNormals();
-      this.computeBoundingBox();
-      this.computeBoundingSphere();
-      return;
-    }
-
-    for (let i = 0; i < directions.length; i++) {
-      const direction = directions[i];
-      const start = path[i].clone();
-      const end = path[i + 1].clone();
-      if (i === 0) start.addScaledVector(direction, -halfWidth);
-      if (i === directions.length - 1) end.addScaledVector(direction, halfWidth);
-
-      const sectionCorners = (center) => [
-        center.clone().addScaledVector(frames[i].normal, halfWidth).addScaledVector(frames[i].binormal, halfWidth),
-        center.clone().addScaledVector(frames[i].normal, -halfWidth).addScaledVector(frames[i].binormal, halfWidth),
-        center.clone().addScaledVector(frames[i].normal, -halfWidth).addScaledVector(frames[i].binormal, -halfWidth),
-        center.clone().addScaledVector(frames[i].normal, halfWidth).addScaledVector(frames[i].binormal, -halfWidth)
+    function getRing(center, frame, direction, nextDirection, extension = 0) {
+      if (extension) center = center.clone().addScaledVector(direction, extension * halfWidth);
+      const corners = [
+        center.clone().addScaledVector(frame.normal, halfWidth).addScaledVector(frame.binormal, halfWidth),
+        center.clone().addScaledVector(frame.normal, -halfWidth).addScaledVector(frame.binormal, halfWidth),
+        center.clone().addScaledVector(frame.normal, -halfWidth).addScaledVector(frame.binormal, -halfWidth),
+        center.clone().addScaledVector(frame.normal, halfWidth).addScaledVector(frame.binormal, -halfWidth)
       ];
 
-      addSolid([...sectionCorners(start), ...sectionCorners(end)]);
+      if (nextDirection) {
+        const miterNormal = direction.clone().add(nextDirection).normalize();
+        const denominator = miterNormal.dot(direction);
+        for (const corner of corners) {
+          const offset = corner.clone().sub(center);
+          corner.addScaledVector(direction, -miterNormal.dot(offset) / denominator);
+        }
+      }
+      return corners;
     }
 
-    for (let i = 1; i < path.length - 1; i++) {
-      if (Math.abs(directions[i - 1].dot(directions[i])) <= turnTolerance) {
-        const [x, y, z] = path[i].toArray();
-        addSolid([
-          new Vector3(x - halfWidth, y - halfWidth, z - halfWidth),
-          new Vector3(x + halfWidth, y - halfWidth, z - halfWidth),
-          new Vector3(x + halfWidth, y + halfWidth, z - halfWidth),
-          new Vector3(x - halfWidth, y + halfWidth, z - halfWidth),
-          new Vector3(x - halfWidth, y - halfWidth, z + halfWidth),
-          new Vector3(x + halfWidth, y - halfWidth, z + halfWidth),
-          new Vector3(x + halfWidth, y + halfWidth, z + halfWidth),
-          new Vector3(x - halfWidth, y + halfWidth, z + halfWidth)
-        ]);
+    function addQuad(corners, outward) {
+      const edge1 = corners[1].clone().sub(corners[0]);
+      const edge2 = corners[2].clone().sub(corners[0]);
+      if (edge1.cross(edge2).dot(outward) < 0) {
+        corners = [corners[0], corners[3], corners[2], corners[1]];
+      }
+
+      const offset = positions.length / 3;
+      for (let i = 0; i < 4; i++) {
+        const point = corners[i];
+        positions.push(point.x, point.y, point.z);
+        uvs.push(i === 1 || i === 2 ? 1 : 0, i >= 2 ? 1 : 0);
+      }
+      indices.push(offset, offset + 1, offset + 2, offset, offset + 2, offset + 3);
+    }
+
+    let firstRing;
+    let lastRing;
+    for (let i = 0; i < directions.length; i++) {
+      const direction = directions[i];
+      const previousDirection = i > 0
+        ? directions[i - 1]
+        : isClosed ? directions[directions.length - 1] : undefined;
+      const nextDirection = i < directions.length - 1
+        ? directions[i + 1]
+        : isClosed ? directions[0] : undefined;
+      const startTurn = previousDirection &&
+        Math.abs(previousDirection.dot(direction)) <= turnTolerance
+        ? previousDirection
+        : undefined;
+      const endTurn = nextDirection &&
+        Math.abs(direction.dot(nextDirection)) <= turnTolerance
+        ? nextDirection
+        : undefined;
+      const startRing = getRing(
+        path[i],
+        frames[i],
+        direction,
+        startTurn,
+        i === 0 && !isClosed ? -1 : 0
+      );
+      const endRing = getRing(
+        path[i + 1],
+        frames[i],
+        direction,
+        endTurn,
+        i === directions.length - 1 && !isClosed ? 1 : 0
+      );
+      if (i === 0) firstRing = startRing;
+      if (i === directions.length - 1) lastRing = endRing;
+
+      for (const [a, b] of faceCorners) {
+        const outward = startRing[a].clone().add(startRing[b])
+          .add(endRing[a]).add(endRing[b])
+          .multiplyScalar(0.25)
+          .sub(path[i].clone().add(path[i + 1]).multiplyScalar(0.5));
+        addQuad([startRing[a], startRing[b], endRing[b], endRing[a]], outward);
       }
     }
 
-    this.setIndex(new IndexAttribute(indices, 1));
-    this.setAttribute('position', new Float32BufferAttribute(positions, 3));
-    this.setAttribute('uv', new Float32BufferAttribute(uvs, 2));
+    if (!isClosed) {
+      addQuad([firstRing[0], firstRing[3], firstRing[2], firstRing[1]], directions[0].clone().negate());
+      addQuad(lastRing, directions[directions.length - 1]);
+    }
+
+    const use32BitIndices = positions.length / 3 > 65535;
+    const IndexAttribute = use32BitIndices ? Uint32BufferAttribute : Uint16BufferAttribute;
+    const IndexArray = use32BitIndices ? Uint32Array : Uint16Array;
+    this.setIndex(new IndexAttribute(new IndexArray(indices), 1));
+    this.setAttribute('position', new Float32BufferAttribute(new Float32Array(positions), 3));
+    this.setAttribute('uv', new Float32BufferAttribute(new Float32Array(uvs), 2));
     this.computeVertexNormals();
     this.computeBoundingBox();
     this.computeBoundingSphere();
