@@ -10,6 +10,16 @@ export default class ThreeHilbertGeometry extends SquareTubeGeometry {
 
     this.type = 'HilbertGeometry';
 
+    const superParams = this.parameters;
+    this.parameters = {
+      ...superParams,
+      order,
+      start,
+      length,
+      padding,
+      simplifyCurves
+    };
+
     function getSuperParams() {
       typeof start !== 'bigint' && (start = Math.round(start));
       typeof length !== 'bigint' && (length = Math.round(length));
@@ -29,5 +39,17 @@ export default class ThreeHilbertGeometry extends SquareTubeGeometry {
 
       return [points, lineWidth];
     }
+  }
+
+  clone() {
+    return new this.constructor(0, 1, 0).copy(this);
+  }
+
+  copy(source) {
+    super.copy(source);
+    this.parameters = Object.assign({}, source.parameters, {
+      points: source.parameters.points.map(point => point.clone())
+    });
+    return this;
   }
 }
