@@ -213,10 +213,9 @@ export default class SquareTubeGeometry extends BufferGeometry {
     const IndexAttribute = use32BitIndices ? Uint32BufferAttribute : Uint16BufferAttribute;
     const indices = use32BitIndices ? new Uint32Array(quadCount * 6) : new Uint16Array(quadCount * 6);
     const faceCorners = [0, 1, 2, 3];
-    const segmentRings = Array.from({ length: directions.length }, () => [
-      Array.from({ length: 4 }, () => new Vector3()),
-      Array.from({ length: 4 }, () => new Vector3())
-    ]);
+    const startRing = Array.from({ length: 4 }, () => new Vector3());
+    const endRing = Array.from({ length: 4 }, () => new Vector3());
+    const firstRing = Array.from({ length: 4 }, () => new Vector3());
     const edge1 = new Vector3();
     const edge2 = new Vector3();
     const faceNormal = new Vector3();
@@ -297,8 +296,6 @@ export default class SquareTubeGeometry extends BufferGeometry {
       vertexOffset += 4;
     }
 
-    let firstRing;
-    let lastRing;
     for (let i = 0; i < directions.length; i++) {
       const direction = directions[i];
       const previousDirection = i > 0
@@ -315,7 +312,6 @@ export default class SquareTubeGeometry extends BufferGeometry {
         Math.abs(direction.dot(nextDirection)) <= turnTolerance
         ? nextDirection
         : undefined;
-      const [startRing, endRing] = segmentRings[i];
       getRing(
         path[i],
         frames[i],
@@ -332,8 +328,9 @@ export default class SquareTubeGeometry extends BufferGeometry {
         endRing,
         i === directions.length - 1 && !isClosed ? 1 : 0
       );
-      if (i === 0) firstRing = startRing;
-      if (i === directions.length - 1) lastRing = endRing;
+      if (i === 0) {
+        for (let corner = 0; corner < 4; corner++) firstRing[corner].copy(startRing[corner]);
+      }
 
       segmentCenter.copy(path[i]).add(path[i + 1]).multiplyScalar(0.5);
       const startV = i === 0 && !isClosed
@@ -369,7 +366,7 @@ export default class SquareTubeGeometry extends BufferGeometry {
       offset.copy(directions[0]).negate();
       addQuad(firstRing[0], firstRing[3], firstRing[2], firstRing[1], offset, startCapUVs);
       addQuad(
-        lastRing[0], lastRing[1], lastRing[2], lastRing[3],
+        endRing[0], endRing[1], endRing[2], endRing[3],
         directions[directions.length - 1], endCapUVs
       );
     }
