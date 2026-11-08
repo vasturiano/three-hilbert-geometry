@@ -106,12 +106,15 @@ export default class SquareTubeGeometry extends BufferGeometry {
       return;
     }
 
-    const path = points.map((point, index) => {
+    const path = [];
+    for (let index = 0; index < points.length; index++) {
+      const point = points[index];
       if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y) || !Number.isFinite(point.z)) {
         throw new TypeError(`points[${index}] must have finite x, y, and z coordinates`);
       }
-      return new Vector3(point.x, point.y, point.z);
-    }).filter((point, index, list) => index === 0 || point.distanceToSquared(list[index - 1]) > 0);
+      const copy = new Vector3(point.x, point.y, point.z);
+      if (index === 0 || copy.distanceToSquared(path[path.length - 1]) > 0) path.push(copy);
+    }
 
     this.parameters = { points: path.map(point => point.clone()), width };
 
@@ -145,9 +148,10 @@ export default class SquareTubeGeometry extends BufferGeometry {
       return;
     }
 
-    const directions = path.slice(1).map((point, index) =>
-      point.clone().sub(path[index]).normalize()
-    );
+    const directions = new Array(path.length - 1);
+    for (let i = 0; i < directions.length; i++) {
+      directions[i] = path[i + 1].clone().sub(path[i]).normalize();
+    }
     const turnTolerance = 1e-6;
     const isClosed = path.length > 2 && path[0].distanceToSquared(path[path.length - 1]) === 0;
     for (let i = 1; i < directions.length; i++) {
@@ -165,8 +169,15 @@ export default class SquareTubeGeometry extends BufferGeometry {
       }
     }
 
+    const pathDistances = new Float64Array(path.length);
+    for (let i = 1; i < path.length; i++) {
+      pathDistances[i] = pathDistances[i - 1] + path[i].distanceTo(path[i - 1]);
+    }
+    const pathLength = pathDistances[pathDistances.length - 1];
+
     const halfWidth = width / 2;
-    const frames = [];
+    const totalLength = pathLength + (isClosed ? 0 : width);
+    const frames = new Array(directions.length);
     const normal = new Vector3();
     const binormal = new Vector3();
     const rotation = new Quaternion();
@@ -189,48 +200,101 @@ export default class SquareTubeGeometry extends BufferGeometry {
         normal.addScaledVector(directions[i], -normal.dot(directions[i])).normalize();
       }
       binormal.crossVectors(directions[i], normal).normalize();
-      frames.push({ normal: normal.clone(), binormal: binormal.clone() });
+      frames[i] = { normal: normal.clone(), binormal: binormal.clone() };
     }
 
-    const positions = [];
-    const uvs = [];
-    const indices = [];
-    const faceCorners = [[0, 1], [1, 2], [2, 3], [3, 0]];
+    const sideQuadCount = directions.length * 4;
+    const capQuadCount = isClosed ? 0 : 2;
+    const quadCount = sideQuadCount + capQuadCount;
+    const vertexCount = quadCount * 4;
+    const positions = new Float32Array(vertexCount * 3);
+    const uvs = new Float32Array(vertexCount * 2);
+    const use32BitIndices = vertexCount > 65535;
+    const IndexAttribute = use32BitIndices ? Uint32BufferAttribute : Uint16BufferAttribute;
+    const indices = use32BitIndices ? new Uint32Array(quadCount * 6) : new Uint16Array(quadCount * 6);
+    const faceCorners = [0, 1, 2, 3];
+    const segmentRings = Array.from({ length: directions.length }, () => [
+      Array.from({ length: 4 }, () => new Vector3()),
+      Array.from({ length: 4 }, () => new Vector3())
+    ]);
+    const edge1 = new Vector3();
+    const edge2 = new Vector3();
+    const faceNormal = new Vector3();
+    const outward = new Vector3();
+    const miterNormal = new Vector3();
+    const offset = new Vector3();
+    const segmentCenter = new Vector3();
+    const quadPoints = [null, null, null, null];
+    const sideUVs = new Float32Array(8);
+    const startCapUVs = new Float32Array([0, 0, 0.75, 0, 0.5, 0, 0.25, 0]);
+    const endCapUVs = new Float32Array([0, 1, 0.25, 1, 0.5, 1, 0.75, 1]);
+    let positionOffset = 0;
+    let uvOffset = 0;
+    let vertexOffset = 0;
+    let indexOffset = 0;
 
-    function getRing(center, frame, direction, nextDirection, extension = 0) {
-      if (extension) center = center.clone().addScaledVector(direction, extension * halfWidth);
-      const corners = [
-        center.clone().addScaledVector(frame.normal, halfWidth).addScaledVector(frame.binormal, halfWidth),
-        center.clone().addScaledVector(frame.normal, -halfWidth).addScaledVector(frame.binormal, halfWidth),
-        center.clone().addScaledVector(frame.normal, -halfWidth).addScaledVector(frame.binormal, -halfWidth),
-        center.clone().addScaledVector(frame.normal, halfWidth).addScaledVector(frame.binormal, -halfWidth)
-      ];
+    function getRing(center, frame, direction, nextDirection, ring, extension = 0) {
+      for (let i = 0; i < 4; i++) {
+        const normalSign = i === 0 || i === 3 ? 1 : -1;
+        const binormalSign = i < 2 ? 1 : -1;
+        ring[i].copy(center)
+          .addScaledVector(direction, extension * halfWidth)
+          .addScaledVector(frame.normal, normalSign * halfWidth)
+          .addScaledVector(frame.binormal, binormalSign * halfWidth);
+      }
 
       if (nextDirection) {
-        const miterNormal = direction.clone().add(nextDirection).normalize();
+        miterNormal.copy(direction).add(nextDirection).normalize();
         const denominator = miterNormal.dot(direction);
-        for (const corner of corners) {
-          const offset = corner.clone().sub(center);
+        for (const corner of ring) {
+          offset.copy(corner).sub(center);
           corner.addScaledVector(direction, -miterNormal.dot(offset) / denominator);
         }
       }
-      return corners;
     }
 
-    function addQuad(corners, outward) {
-      const edge1 = corners[1].clone().sub(corners[0]);
-      const edge2 = corners[2].clone().sub(corners[0]);
-      if (edge1.cross(edge2).dot(outward) < 0) {
-        corners = [corners[0], corners[3], corners[2], corners[1]];
+    function addQuad(corner0, corner1, corner2, corner3, outward, customUVs) {
+      const hasCustomUVs = customUVs !== undefined;
+      edge1.copy(corner1).sub(corner0);
+      edge2.copy(corner2).sub(corner0);
+      if (faceNormal.crossVectors(edge1, edge2).dot(outward) < 0) {
+        const temp = corner1;
+        corner1 = corner3;
+        corner3 = temp;
+        if (hasCustomUVs) {
+          const tempU = customUVs[2];
+          const tempV = customUVs[3];
+          customUVs[2] = customUVs[6];
+          customUVs[3] = customUVs[7];
+          customUVs[6] = tempU;
+          customUVs[7] = tempV;
+        }
       }
 
-      const offset = positions.length / 3;
+      quadPoints[0] = corner0;
+      quadPoints[1] = corner1;
+      quadPoints[2] = corner2;
+      quadPoints[3] = corner3;
       for (let i = 0; i < 4; i++) {
-        const point = corners[i];
-        positions.push(point.x, point.y, point.z);
-        uvs.push(i === 1 || i === 2 ? 1 : 0, i >= 2 ? 1 : 0);
+        const point = quadPoints[i];
+        positions[positionOffset++] = point.x;
+        positions[positionOffset++] = point.y;
+        positions[positionOffset++] = point.z;
+        if (hasCustomUVs) {
+          uvs[uvOffset++] = customUVs[i * 2];
+          uvs[uvOffset++] = customUVs[i * 2 + 1];
+        } else {
+          uvs[uvOffset++] = i === 1 || i === 2 ? 1 : 0;
+          uvs[uvOffset++] = i >= 2 ? 1 : 0;
+        }
       }
-      indices.push(offset, offset + 1, offset + 2, offset, offset + 2, offset + 3);
+      indices[indexOffset++] = vertexOffset;
+      indices[indexOffset++] = vertexOffset + 1;
+      indices[indexOffset++] = vertexOffset + 2;
+      indices[indexOffset++] = vertexOffset;
+      indices[indexOffset++] = vertexOffset + 2;
+      indices[indexOffset++] = vertexOffset + 3;
+      vertexOffset += 4;
     }
 
     let firstRing;
@@ -251,43 +315,68 @@ export default class SquareTubeGeometry extends BufferGeometry {
         Math.abs(direction.dot(nextDirection)) <= turnTolerance
         ? nextDirection
         : undefined;
-      const startRing = getRing(
+      const [startRing, endRing] = segmentRings[i];
+      getRing(
         path[i],
         frames[i],
         direction,
         startTurn,
+        startRing,
         i === 0 && !isClosed ? -1 : 0
       );
-      const endRing = getRing(
+      getRing(
         path[i + 1],
         frames[i],
         direction,
         endTurn,
+        endRing,
         i === directions.length - 1 && !isClosed ? 1 : 0
       );
       if (i === 0) firstRing = startRing;
       if (i === directions.length - 1) lastRing = endRing;
 
-      for (const [a, b] of faceCorners) {
-        const outward = startRing[a].clone().add(startRing[b])
+      segmentCenter.copy(path[i]).add(path[i + 1]).multiplyScalar(0.5);
+      const startV = i === 0 && !isClosed
+        ? 0
+        : (pathDistances[i] + (isClosed ? 0 : halfWidth)) / totalLength;
+      const endV = i === directions.length - 1 && !isClosed
+        ? 1
+        : (pathDistances[i + 1] + (isClosed ? 0 : halfWidth)) / totalLength;
+      for (const a of faceCorners) {
+        const b = (a + 1) % 4;
+        const startU = a / 4;
+        const endU = (a + 1) / 4;
+        sideUVs[0] = startU;
+        sideUVs[1] = startV;
+        sideUVs[2] = endU;
+        sideUVs[3] = startV;
+        sideUVs[4] = endU;
+        sideUVs[5] = endV;
+        sideUVs[6] = startU;
+        sideUVs[7] = endV;
+        outward.copy(startRing[a]).add(startRing[b])
           .add(endRing[a]).add(endRing[b])
           .multiplyScalar(0.25)
-          .sub(path[i].clone().add(path[i + 1]).multiplyScalar(0.5));
-        addQuad([startRing[a], startRing[b], endRing[b], endRing[a]], outward);
+          .sub(segmentCenter);
+        addQuad(
+          startRing[a], startRing[b], endRing[b], endRing[a], outward,
+          sideUVs
+        );
       }
     }
 
     if (!isClosed) {
-      addQuad([firstRing[0], firstRing[3], firstRing[2], firstRing[1]], directions[0].clone().negate());
-      addQuad(lastRing, directions[directions.length - 1]);
+      offset.copy(directions[0]).negate();
+      addQuad(firstRing[0], firstRing[3], firstRing[2], firstRing[1], offset, startCapUVs);
+      addQuad(
+        lastRing[0], lastRing[1], lastRing[2], lastRing[3],
+        directions[directions.length - 1], endCapUVs
+      );
     }
 
-    const use32BitIndices = positions.length / 3 > 65535;
-    const IndexAttribute = use32BitIndices ? Uint32BufferAttribute : Uint16BufferAttribute;
-    const IndexArray = use32BitIndices ? Uint32Array : Uint16Array;
-    this.setIndex(new IndexAttribute(new IndexArray(indices), 1));
-    this.setAttribute('position', new Float32BufferAttribute(new Float32Array(positions), 3));
-    this.setAttribute('uv', new Float32BufferAttribute(new Float32Array(uvs), 2));
+    this.setIndex(new IndexAttribute(indices, 1));
+    this.setAttribute('position', new Float32BufferAttribute(positions, 3));
+    this.setAttribute('uv', new Float32BufferAttribute(uvs, 2));
     this.computeVertexNormals();
     this.computeBoundingBox();
     this.computeBoundingSphere();
