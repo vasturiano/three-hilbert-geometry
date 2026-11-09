@@ -341,8 +341,8 @@ export default class SquareTubeGeometry extends BufferGeometry {
         : (pathDistances[i + 1] + (isClosed ? 0 : halfWidth)) / totalLength;
       for (const a of faceCorners) {
         const b = (a + 1) % 4;
-        const startU = a / 4;
-        const endU = (a + 1) / 4;
+        const startU = 0;
+        const endU = 1;
         sideUVs[0] = startU;
         sideUVs[1] = startV;
         sideUVs[2] = endU;
