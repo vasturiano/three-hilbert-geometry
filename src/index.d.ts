@@ -7,6 +7,7 @@ declare class HilbertGeometry extends BufferGeometry {
     length: number | bigint,
     optionalArgs?: {
       padding?: number,
+      paddingAbsolute?: number,
       simplifyCurves?: boolean
     }
   );

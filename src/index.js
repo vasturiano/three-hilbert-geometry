@@ -4,6 +4,7 @@ import SquareTubeGeometry from './SquareTubeGeometry.js';
 export default class ThreeHilbertGeometry extends SquareTubeGeometry {
   constructor(order, start, length, {
     padding = 0,
+    paddingAbsolute = 0,
     simplifyCurves = true
   } = {}) {
     super(...getSuperParams());
@@ -17,6 +18,7 @@ export default class ThreeHilbertGeometry extends SquareTubeGeometry {
       start,
       length,
       padding,
+      paddingAbsolute,
       simplifyCurves
     };
 
@@ -35,7 +37,9 @@ export default class ThreeHilbertGeometry extends SquareTubeGeometry {
       }
 
       const points = hilbert3D(undefined, 1, order - 1, start, length);
-      const lineWidth = 1 / (2**(order-1)) * (1 - Math.min(1, padding));
+
+      const w = 2**(1-order); // Full width without padding
+      const lineWidth = (w - Math.min(paddingAbsolute, w * 0.5)) * (1 - Math.min(1, padding));
 
       return [points, lineWidth];
     }

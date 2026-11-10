@@ -50,6 +50,7 @@ Creates a square-tubed Hilbert curve segment. The geometry is built from a recur
 * <b>length</b>: Number of curve points to include. Also accepts a number or bigint.
 * <b>options</b>: Optional settings object.
   * <b>padding</b>: Fractional relative padding between of the tube. Value is in the range `[0, 1)`. Default is `0`.
+  * <b>paddingAbsolute</b>: Absolute padding in world units. Default is `0`.
   * <b>simplifyCurves</b>: If `true`, the curve is simplified by reducing the order whenever possible when both `start` and `length` are divisible by 8. Default is `true`.
 
 [npm-img]: https://img.shields.io/npm/v/three-hilbert-geometry
