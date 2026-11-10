@@ -281,10 +281,10 @@ export default class SquareTubeGeometry extends BufferGeometry {
         positions[positionOffset++] = point.z;
         if (hasCustomUVs) {
           uvs[uvOffset++] = customUVs[i * 2];
-          uvs[uvOffset++] = customUVs[i * 2 + 1];
+          uvs[uvOffset++] = 1 - customUVs[i * 2 + 1];
         } else {
           uvs[uvOffset++] = i === 1 || i === 2 ? 1 : 0;
-          uvs[uvOffset++] = i >= 2 ? 1 : 0;
+          uvs[uvOffset++] = i >= 2 ? 0 : 1;
         }
       }
       indices[indexOffset++] = vertexOffset;
