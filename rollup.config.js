@@ -35,7 +35,7 @@ export default [
     plugins: [
       resolve(),
       commonJs(),
-      babel({ exclude: 'node_modules/**' })
+      babel({ babelHelpers: 'bundled', exclude: 'node_modules/**' })
     ]
   },
   { // ES module
@@ -48,7 +48,7 @@ export default [
     ],
     external: [...Object.keys(dependencies || {}), ...Object.keys(peerDependencies || {})],
     plugins: [
-      babel()
+      babel({ babelHelpers: 'bundled' })
     ]
   },
   { // expose TS declarations
