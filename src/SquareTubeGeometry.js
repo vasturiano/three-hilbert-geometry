@@ -106,14 +106,27 @@ export default class SquareTubeGeometry extends BufferGeometry {
       return;
     }
 
+    const turnTolerance = 1e-6;
     const path = [];
+    const incoming = new Vector3();
+    const outgoing = new Vector3();
     for (let index = 0; index < points.length; index++) {
       const point = points[index];
       if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y) || !Number.isFinite(point.z)) {
         throw new TypeError(`points[${index}] must have finite x, y, and z coordinates`);
       }
       const copy = new Vector3(point.x, point.y, point.z);
-      if (index === 0 || copy.distanceToSquared(path[path.length - 1]) > 0) path.push(copy);
+      if (path.length && copy.distanceToSquared(path[path.length - 1]) === 0) continue;
+
+      while (path.length >= 2) {
+        incoming.subVectors(path[path.length - 1], path[path.length - 2]);
+        outgoing.subVectors(copy, path[path.length - 1]);
+        const dot = incoming.dot(outgoing) / Math.sqrt(incoming.lengthSq() * outgoing.lengthSq());
+        if (dot < 1 - turnTolerance) break;
+        path.pop();
+      }
+
+      path.push(copy);
     }
 
     this.parameters = { points: path.map(point => point.clone()), width };
@@ -152,7 +165,6 @@ export default class SquareTubeGeometry extends BufferGeometry {
     for (let i = 0; i < directions.length; i++) {
       directions[i] = path[i + 1].clone().sub(path[i]).normalize();
     }
-    const turnTolerance = 1e-6;
     const isClosed = path.length > 2 && path[0].distanceToSquared(path[path.length - 1]) === 0;
     for (let i = 1; i < directions.length; i++) {
       const dot = directions[i - 1].dot(directions[i]);
