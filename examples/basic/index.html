@@ -20,9 +20,25 @@
 
   const order = 3;
   const hilbertObj = new THREE.Mesh(
-    new HilbertGeometry(order, 0, Math.pow(8, order), { padding: 0.5, simplifyCurves: false }),
-    new THREE.MeshLambertMaterial({ color: 'yellow' })
+    new HilbertGeometry(order, 0, Math.pow(8, order), { padding: 0.6, simplifyCurves: false }),
+    new THREE.MeshStandardMaterial({ map: getGradientTexture() })
   );
+
+  function getGradientTexture() {
+    const size = 256;
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    const gradient = ctx.createLinearGradient(0, 0, 0, size);
+    gradient.addColorStop(0, "green");
+    gradient.addColorStop(1, "red");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, size, size);
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.ClampToEdgeWrapping;
+    return texture;
+  }
 
   // Setup renderer
   const renderer = new THREE.WebGLRenderer();
@@ -33,8 +49,8 @@
   // Setup scene
   const scene = new THREE.Scene();
   scene.add(hilbertObj);
-  scene.add(new THREE.AmbientLight(0xbbbbbb));
-  scene.add(new THREE.DirectionalLight(0xffffff, 0.6));
+  scene.add(new THREE.AmbientLight(0xbbbbbb, 2));
+  scene.add(new THREE.DirectionalLight(0xffffff, 1));
 
   // Setup camera
   const camera = new THREE.PerspectiveCamera();
