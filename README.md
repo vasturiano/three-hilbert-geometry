@@ -7,6 +7,12 @@ ThreeJS Hilbert Geometry
 
 A Three.js geometry for constructing a square-tube Hilbert curve with a recursive 3D path.
 
+<p align="center">
+   <a href="https://vasturiano.github.io/hilbert-chart/examples/basic/"><img width="70%" src="https://vasturiano.github.io/hilbert-chart/examples/basic/preview.png"></a>
+</p>
+
+See also [three-hilbert](https://github.com/vasturiano/three-hilbert).
+
 ## Quick start
 
 ```js
