@@ -1,4 +1,4 @@
-import { BufferGeometry } from 'three';
+import { BufferGeometry, Vector3 } from 'three';
 
 declare class HilbertGeometry extends BufferGeometry {
   constructor(
@@ -11,6 +11,9 @@ declare class HilbertGeometry extends BufferGeometry {
       simplifyCurves?: boolean
     }
   );
+
+  static getValAtPosition(order: number, point: Vector3): number | bigint;
+  static getPositionAtVal(order: number, val: number | bigint): Vector3;
 }
 
 export default HilbertGeometry;

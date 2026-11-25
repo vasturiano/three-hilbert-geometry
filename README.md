@@ -59,6 +59,24 @@ Creates a square-tubed Hilbert curve segment. The geometry is built from a recur
   * <b>paddingAbsolute</b>: Absolute padding in world units. Default is `0`.
   * <b>simplifyCurves</b>: If `true`, the curve is simplified by reducing the order whenever possible when both `start` and `length` are divisible by 8. Default is `true`.
 
+### Lookup methods
+
+Use the static `getValAtPosition` method to find the Hilbert curve index nearest to a local-space coordinate in the standard `[-1, 1]` cube:
+
+```js
+const index = HilbertGeometry.getValAtPosition(order, new THREE.Vector3(x, y, z));
+```
+
+Coordinates are mapped to the nearest grid cell at the given order. The result is a `number` when it is a safe integer and a `bigint` otherwise.
+
+Use `getPositionAtVal` for the reverse lookup from a curve index to its local-space coordinate:
+
+```js
+const position = HilbertGeometry.getPositionAtVal(order, index);
+```
+
+The index must be an integer in the range `[0, 8 ** order)`. It accepts a `number` or `bigint` and returns a `THREE.Vector3`.
+
 [npm-img]: https://img.shields.io/npm/v/three-hilbert-geometry
 [npm-url]: https://npmjs.org/package/three-hilbert-geometry
 [build-size-img]: https://img.shields.io/bundlephobia/minzip/three-hilbert-geometry

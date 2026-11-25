@@ -109,6 +109,60 @@ export function hilbert3D(
 	return points;
 }
 
+export function getValAtPosition( order, point ) {
+	if ( ! Number.isInteger( order ) ) throw new TypeError( 'Order must be an integer.' );
+	if ( order < 0 ) throw new RangeError( 'Order must not be negative.' );
+	if ( ! Number.isFinite( point.x ) || ! Number.isFinite( point.y ) || ! Number.isFinite( point.z ) ) {
+		throw new TypeError( 'Point coordinates must be finite numbers.' );
+	}
+	if ( Math.abs( point.x ) > 1 || Math.abs( point.y ) > 1 || Math.abs( point.z ) > 1 ) {
+		throw new RangeError( 'Point coordinates must be within the Hilbert cube [-1, 1].' );
+	}
+
+	let x = 0;
+	let y = 0;
+	let z = 0;
+	let size = 1;
+	let orientationId = 0;
+	let index = 0n;
+
+	for ( let depth = 0; depth < order; depth ++ ) {
+		const xPositive = point.x >= x;
+		const yPositive = point.y >= y;
+		const zPositive = point.z >= z;
+		const actualCorner = xPositive
+			? ( yPositive ? ( zPositive ? 6 : 7 ) : ( zPositive ? 5 : 4 ) )
+			: ( yPositive ? ( zPositive ? 1 : 0 ) : ( zPositive ? 2 : 3 ) );
+		const child = ORIENTATIONS[ orientationId ].indexOf( actualCorner );
+		const half = size / 2;
+
+		index = index * 8n + BigInt( child );
+		x += xPositive ? half : -half;
+		y += yPositive ? half : -half;
+		z += zPositive ? half : -half;
+		size = half;
+		orientationId = ORIENTATION_TRANSITIONS[ orientationId ][ child ];
+	}
+
+	return index <= BigInt( Number.MAX_SAFE_INTEGER ) ? Number( index ) : index;
+}
+
+export function getPositionAtVal( order, val ) {
+	if ( ! Number.isInteger( order ) || order < 1 ) {
+		throw new RangeError( 'Order must be a positive integer.' );
+	}
+	if ( typeof val !== 'bigint' && ! Number.isSafeInteger( val ) ) {
+		throw new TypeError( 'Position value must be a safe integer or bigint.' );
+	}
+
+	const index = BigInt( val );
+	if ( index < 0n || index >= 8n ** BigInt( order ) ) {
+		throw new RangeError( 'Position value is outside the Hilbert curve.' );
+	}
+
+	return hilbert3D( undefined, 1, order - 1, index, 1n )[ 0 ];
+}
+
 export default hilbert3D;
 
 function generateNumber( points, x, y, z, size, order, offset, chunkSize, orientationId, first, end, baseCorners ) {

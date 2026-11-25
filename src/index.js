@@ -1,4 +1,4 @@
-import hilbert3D from './hilbert3d.js';
+import hilbert3D, { getPositionAtVal, getValAtPosition } from './hilbert3d.js';
 import SquareTubeGeometry from './SquareTubeGeometry.js';
 
 export default class ThreeHilbertGeometry extends SquareTubeGeometry {
@@ -43,6 +43,14 @@ export default class ThreeHilbertGeometry extends SquareTubeGeometry {
 
       return [points, lineWidth];
     }
+  }
+
+  static getValAtPosition(order, point) {
+    return getValAtPosition(order, point);
+  }
+
+  static getPositionAtVal(order, val) {
+    return getPositionAtVal(order, val);
   }
 
   clone() {
