@@ -1,6 +1,6 @@
 {
   "name": "three-hilbert-geometry",
-  "version": "1.3.1",
+  "version": "1.3.2",
   "description": "ThreeJS geometry for drawing a Hilbert curve segment",
   "type": "module",
   "sideEffects": false,
